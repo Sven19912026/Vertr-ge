@@ -1,45 +1,74 @@
-# Vertragsmanager – Version 2
+# Supplier Hub V4
 
-GitHub-Pages-fähige Vertragsverwaltung ohne Firebase.
+GitHub-Pages-faehige lokale Vorstufe fuer Lieferanten, Vertraege und Verhandlungen. Keine Firebase-Abhaengigkeit.
 
-## Neu in Version 2
+## Neu in V4: automatische Abschlussmail nach Verhandlung
 
-- modernes Dark-Mode-Design
-- Mail-Erinnerung pro Vertrag aktivierbar
-- frei einstellbarer Erinnerungsvorlauf in Tagen
-- eigener Mail-Empfänger pro Vertrag
-- alternativ Empfänger aus der E-Mail-Adresse des verantwortlichen Users
-- Test-Mail über das lokale Mailprogramm / Outlook via `mailto:`
-- Dashboard zeigt Fristen, Mailstatus und fehlende Empfänger
-- vorbereitet für automatischen Mailversand über Dashwise/Backend
+Bei jeder Verhandlung koennen hinterlegt werden:
 
-## Wichtig zum automatischen Mailversand
+- zustaendiger Bauleiter (optional aus den vorhandenen Benutzern)
+- Bauleiter-Name
+- Outlook-/E-Mail-Adresse
+- Ausgangspreis, aktueller Preis und Zielpreis
+- Zusammenfassung / Verhandlungsergebnis
+- Auftragsbestaetigung (AB) als Datei
 
-Eine reine GitHub-Pages-Webseite läuft nur, wenn sie im Browser geöffnet ist. Sie kann daher nicht zuverlässig jeden Tag im Hintergrund prüfen und selbstständig Outlook-Mails versenden.
+Wenn der Status erstmals auf **Abgeschlossen** gesetzt wird:
 
-Für den späteren Produktivbetrieb sollte Dashwise bzw. ein Backend täglich:
+1. Das Verhandlungsstadium wird auf **Abgeschlossen** gesetzt.
+2. Der aktuelle Preis wird als Endpreis verwendet.
+3. Die Bauleiter-E-Mail wird geprueft. Ohne E-Mail kann die Verhandlung nicht abgeschlossen werden.
+4. Eine Abschlussmail wird automatisch erzeugt.
+5. Eine hinterlegte AB wird der Mail als vorgesehener Anhang zugeordnet.
+6. Die Mail wird in `mailQueue` mit Status `pending` gespeichert.
+7. Der Vorgang wird im Audit-Verlauf dokumentiert.
 
-1. aktive Verträge und deren Kündigungsfrist prüfen,
-2. den hinterlegten Erinnerungsvorlauf berücksichtigen,
-3. den Mail-Empfänger des Vertrags oder des Verantwortlichen bestimmen,
-4. die Erinnerungsmail über Microsoft 365 / Outlook versenden,
-5. Versanddatum und Ergebnis protokollieren.
+Wird nachtraeglich eine neue AB hochgeladen, aktualisiert die App die vorgemerkte Abschlussmail automatisch.
 
-Die benötigten Felder sind in Version 2 bereits im Vertragsdatensatz vorgesehen.
+## E-Mail-Inhalt
 
-## Lokale Speicherung
+Die Abschlussmail enthaelt u. a.:
 
-Aktuell werden Daten mit IndexedDB lokal im Browser gespeichert. Es gibt keine Firebase-Verbindung.
+- Verhandlungsgegenstand
+- Lieferant
+- Gesellschaft
+- Ausgangspreis netto
+- Endpreis netto
+- Zielpreis netto
+- Preisverbesserung
+- Menge / Volumen
+- Ansprechpartner beim Lieferanten
+- verantwortlichen Verhandler
+- Zusammenfassung / Verhandlungsergebnis
+- Hinweis auf die AB im Anhang
 
-Wenn Version 2 unter derselben GitHub-Pages-Adresse wie Version 1 eingespielt wird, bleibt dieselbe IndexedDB-Datenbank bestehen. Vor einem Update empfiehlt sich trotzdem ein JSON-Export über `Daten & Export`.
+## Wichtiger technischer Punkt
 
-## GitHub Pages
+GitHub Pages ist eine statische Webseite. Ein zuverlaessiger vollautomatischer Outlook-Versand mit Anhang darf nicht mit geheimen Microsoft-Zugangsdaten im Browser umgesetzt werden.
 
-Die Dateien müssen direkt im Root des Repositorys liegen:
+Darum ist V4 bereits so aufgebaut, dass der Abschluss-Trigger und die Versandwarteschlange automatisch funktionieren. Beim spaeteren Umzug auf Dashwise muss der Server nur noch die `mailQueue` verarbeiten.
+
+Empfohlener Server-Ablauf:
+
+1. Dashwise erkennt einen neuen `pending`-Eintrag.
+2. Der Server laedt die zugeordnete AB aus dem Cloud-Speicher.
+3. Versand ueber Microsoft Graph / Microsoft 365.
+4. Bei Erfolg: `status = sent`, `sentAt = ...`.
+5. Bei Fehler: Retry und Fehlerprotokoll.
+
+Microsoft-Client-Secrets oder Graph-Zugangsdaten gehoeren ausschliesslich auf den Server und nicht in `app.js` oder GitHub Pages.
+
+## Dateien
 
 - `index.html`
 - `styles.css`
 - `app.js`
 - `README.md`
 
-GitHub: Settings → Pages → Deploy from a branch → `main` → `/ (root)`.
+## GitHub Pages
+
+Alle Dateien in das Hauptverzeichnis des Repositories hochladen und Pages ueber `main` / `/ (root)` veroeffentlichen.
+
+## Speicher
+
+Derzeit IndexedDB im Browser. Bestehende V3-Daten bleiben durch das Datenbank-Upgrade erhalten. V4 legt zusaetzlich den Store `mailQueue` an.
