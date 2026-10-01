@@ -103,6 +103,30 @@
   function providerName(id) { return state.data.providers.find(x => x.id === id)?.name || '—'; }
   function categoryName(id) { return state.data.categories.find(x => x.id === id)?.name || '—'; }
   function userName(id) { return state.data.users.find(x => x.id === id)?.name || '—'; }
+  function emailReminderEnabled(contract) { return contract?.emailReminder !== false; }
+  function notificationRecipient(contract) {
+    const direct = String(contract?.notificationEmail || '').trim();
+    if (direct) return direct;
+    return String(state.data.users.find(u => u.id === contract?.ownerId)?.email || '').trim();
+  }
+  function openOutlookDraft(contract) {
+    const to = notificationRecipient(contract);
+    if (!to) { toast('Kein Mail-Empfänger hinterlegt.'); return; }
+    const deadline = cancellationDeadline(contract);
+    const provider = providerName(contract.providerId);
+    const subject = `Fristerinnerung: ${contract.name} – Kündigen bis ${fmtDate(deadline)}`;
+    const body = [
+      `Fristerinnerung für den Vertrag "${contract.name}".`,
+      `Dienstleister: ${provider}`,
+      contract.company ? `Gesellschaft: ${contract.company}` : '',
+      contract.endDate ? `Vertragsende: ${fmtDate(contract.endDate)}` : '',
+      deadline ? `Kündigen bis: ${fmtDate(deadline)}` : '',
+      `Erinnerungsvorlauf: ${Number(contract.reminderDays || 0)} Tage`,
+      '',
+      'Diese Nachricht wurde im Vertragsmanager vorbereitet.'
+    ].filter(Boolean).join('\n');
+    window.location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
 
   function daysBetween(dateA, dateB) {
     const a = new Date(`${dateA}T00:00:00`);
@@ -239,7 +263,11 @@
                 <div class="alert-title">${escapeHtml(x.c.name)}</div>
                 <div class="alert-meta">${escapeHtml(providerName(x.c.providerId))} · Kündigungsfrist ${fmtDate(x.deadline)}</div>
               </div>
-              <div class="right"><strong>${x.days < 0 ? `${Math.abs(x.days)} Tage überfällig` : `${x.days} Tage`}</strong></div>
+              <div class="alert-actions">
+                <strong>${x.days < 0 ? `${Math.abs(x.days)} Tage überfällig` : `${x.days} Tage`}</strong>
+                ${emailReminderEnabled(x.c) ? `<span class="badge mail">✉ ${escapeHtml(notificationRecipient(x.c) || 'Empfänger fehlt')}</span>` : ''}
+                ${emailReminderEnabled(x.c) && notificationRecipient(x.c) ? `<button class="secondary-btn outlook-draft" data-id="${x.c.id}">Mail testen</button>` : ''}
+              </div>
             </div>`).join('')}</div>` : `<div class="empty">Aktuell keine Fristen im Erinnerungsvorlauf.</div>`}
         </div>
 
@@ -328,7 +356,7 @@
   function renderUsers() {
     const rows = [...state.data.users].sort((a,b)=>a.name.localeCompare(b.name,'de'));
     return `
-      <div class="notice info">Diese Benutzerverwaltung steuert in Version 1 nur die lokale App. Die echte Anmeldung und zentrale Rechteverwaltung wird später an Dashwise angebunden.</div>
+      <div class="notice info">Diese Benutzerverwaltung steuert in Version 2 weiterhin nur die lokale App. Die echte Anmeldung und zentrale Rechteverwaltung wird später an Dashwise angebunden.</div>
       <div class="card card-pad">
         <div class="section-head"><h2 class="section-title">Benutzer</h2><div class="actions"><button class="primary-btn" id="addUserBtn" ${isAdmin()?'':'disabled'}>+ Benutzer</button></div></div>
         <div class="table-wrap"><table><thead><tr><th>Name</th><th>Rolle</th><th>E-Mail</th><th>Status</th><th></th></tr></thead><tbody>
@@ -338,18 +366,29 @@
   }
 
   function renderSettings() {
+    const mailEnabled = state.data.contracts.filter(emailReminderEnabled);
+    const mailReady = mailEnabled.filter(c => notificationRecipient(c));
     return `
       <div class="grid grid-2" style="align-items:start;">
         <div class="card card-pad">
+          <div class="section-head"><h2 class="section-title">Outlook & Erinnerungen</h2></div>
+          <div class="grid grid-2" style="margin-bottom:14px">
+            <div class="detail-item"><div class="k">Mail-Erinnerungen aktiv</div><div class="v">${mailEnabled.length}</div></div>
+            <div class="detail-item"><div class="k">Versandbereit</div><div class="v">${mailReady.length}</div></div>
+          </div>
+          <div class="notice info"><strong>Aktueller lokaler Modus:</strong> Die App berechnet die Fristen bereits und kann eine fertige Outlook-/Mail-Nachricht öffnen. Ein automatischer Versand im Hintergrund ist auf einer reinen GitHub-Pages-Seite nicht zuverlässig möglich.</div>
+          <div class="notice success"><strong>Dashwise-Ziel:</strong> Später ruft ein täglicher Serverjob die fälligen Verträge ab und versendet die gleiche Erinnerung automatisch an die hinterlegte Outlook-Adresse – auch wenn niemand die App geöffnet hat.</div>
+          <p class="muted">Empfänger: zuerst die im Vertrag hinterlegte Erinnerungsadresse; wenn diese leer ist, wird die E-Mail des Verantwortlichen verwendet.</p>
+        </div>
+        <div class="card card-pad">
           <div class="section-head"><h2 class="section-title">Datensicherung</h2></div>
-          <p class="muted">Exportiert Stammdaten, Verträge, Notizen, Kündigungen und Verlauf als JSON. Dokumente werden separat als lokale Browserdaten gehalten und sind in diesem JSON nicht enthalten.</p>
+          <p class="muted">Exportiert Stammdaten, Verträge, Notizen, Kündigungen und Verlauf als JSON. Dokumente bleiben derzeit separat im lokalen Browser gespeichert.</p>
           <div class="toolbar"><button class="primary-btn" id="exportBtn">JSON exportieren</button><label class="secondary-btn" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer"><input id="importFile" type="file" accept="application/json" style="display:none">JSON importieren</label></div>
         </div>
         <div class="card card-pad">
           <div class="section-head"><h2 class="section-title">Dashwise-Vorbereitung</h2></div>
-          <div class="notice info">Die Oberfläche greift nur über eine Speicherschicht auf Daten zu. Für Dashwise kann später der lokale IndexedDB-Adapter durch einen API-/Cloud-Adapter ersetzt werden.</div>
-          <ul class="muted" style="font-size:13px;line-height:1.8;margin:0;padding-left:18px">
-            <li>keine Firebase-Abhängigkeit</li><li>lokale Dokumentablage in IndexedDB</li><li>IDs und Beziehungen bereits cloud-tauglich</li><li>Benutzer, Rollen und Audit-Verlauf vorbereitet</li>
+          <ul class="muted" style="font-size:12px;line-height:1.9;margin:0;padding-left:18px">
+            <li>keine Firebase-Abhängigkeit</li><li>lokale Dokumentablage in IndexedDB</li><li>Mail-Regeln bereits pro Vertrag gespeichert</li><li>IDs und Beziehungen cloud-tauglich</li><li>Benutzer, Rollen und Audit-Verlauf vorbereitet</li>
           </ul>
         </div>
       </div>`;
@@ -374,6 +413,7 @@
     $$('.edit-user').forEach(x=>x.addEventListener('click',()=>openUserModal(x.dataset.id)));
     $('#exportBtn')?.addEventListener('click', exportJson);
     $('#importFile')?.addEventListener('change', importJson);
+    $$('.outlook-draft').forEach(b=>b.addEventListener('click', e=>{ e.stopPropagation(); const c=state.data.contracts.find(x=>x.id===b.dataset.id); if(c) openOutlookDraft(c); }));
   }
 
   function showModal(html, small=false) {
@@ -429,6 +469,8 @@
         <label><span>Abweichendes Kündigungsdatum</span><input type="date" name="cancellationDeadline" value="${c?.cancellationDeadline||''}"></label>
         <label><span>Erinnerung (Tage vor Kündigungsfrist)</span><input type="number" min="0" name="reminderDays" value="${c?.reminderDays ?? 90}"></label>
         <label><span>Verantwortlicher</span><select name="ownerId"><option value="">—</option>${userOptions(c?.ownerId||state.userId)}</select></label>
+        <label><span>Mail-Erinnerung</span><select name="emailReminder"><option value="true" ${emailReminderEnabled(c)?'selected':''}>Aktiv</option><option value="false" ${!emailReminderEnabled(c)?'selected':''}>Aus</option></select></label>
+        <label><span>Mail-Empfänger</span><input type="email" name="notificationEmail" placeholder="leer = E-Mail des Verantwortlichen" value="${escapeHtml(c?.notificationEmail||'')}"></label>
         <label><span>Status</span><select name="status"><option value="active" ${c?.status==='active'||!c?'selected':''}>Aktiv</option><option value="planned" ${c?.status==='planned'?'selected':''}>Kündigung vorgesehen</option><option value="cancelled" ${c?.status==='cancelled'?'selected':''}>Gekündigt</option><option value="ended" ${c?.status==='ended'?'selected':''}>Beendet</option></select></label>
         <label><span>Kosten</span><input type="number" step="0.01" min="0" name="costAmount" value="${c?.costAmount ?? 0}"></label>
         <label><span>Kostenintervall</span><select name="costPeriod"><option value="monthly" ${c?.costPeriod==='monthly'?'selected':''}>monatlich</option><option value="yearly" ${c?.costPeriod==='yearly'?'selected':''}>jährlich</option><option value="oneoff" ${c?.costPeriod==='oneoff'?'selected':''}>einmalig</option></select></label>
@@ -439,7 +481,7 @@
     $('#contractForm').addEventListener('submit', async e=>{
       e.preventDefault(); const fd=new FormData(e.target); const rec={...(c||{}), id:c?.id||uid('ctr'), createdAt:c?.createdAt||new Date().toISOString(), updatedAt:new Date().toISOString()};
       for (const [k,v] of fd.entries()) rec[k]=String(v).trim();
-      rec.noticeMonths=Number(rec.noticeMonths||0); rec.reminderDays=Number(rec.reminderDays||0); rec.costAmount=Number(rec.costAmount||0); rec.renewalMonths=Number(rec.renewalMonths||0); rec.autoRenew=rec.autoRenew==='true';
+      rec.noticeMonths=Number(rec.noticeMonths||0); rec.reminderDays=Number(rec.reminderDays||0); rec.costAmount=Number(rec.costAmount||0); rec.renewalMonths=Number(rec.renewalMonths||0); rec.autoRenew=rec.autoRenew==='true'; rec.emailReminder=rec.emailReminder==='true';
       await storage.put('contracts', rec); await audit(c?'Vertrag geändert':'Vertrag angelegt','contract',rec.id,rec.name); await reload(); closeModal(); render(); toast('Vertrag gespeichert');
     });
   }
@@ -493,10 +535,13 @@
           <div class="detail-item"><div class="k">Kündigen bis</div><div class="v">${fmtDate(deadline)}</div></div>
           <div class="detail-item"><div class="k">Erinnerung</div><div class="v">${Number(c.reminderDays||0)} Tage vorher</div></div>
           <div class="detail-item"><div class="k">Verantwortlich</div><div class="v">${escapeHtml(userName(c.ownerId))}</div></div>
+          <div class="detail-item"><div class="k">Mail-Erinnerung</div><div class="v">${emailReminderEnabled(c)?'Aktiv':'Aus'}</div></div>
+          <div class="detail-item"><div class="k">Mail-Empfänger</div><div class="v">${escapeHtml(notificationRecipient(c)||'Noch nicht hinterlegt')}</div></div>
           <div class="detail-item"><div class="k">Kosten</div><div class="v">${euro(c.costAmount)} · ${c.costPeriod==='monthly'?'monatlich':c.costPeriod==='yearly'?'jährlich':'einmalig'}</div></div>
-        </div>`,
+        </div>
+        ${emailReminderEnabled(c) ? `<div class="notice info" style="margin-top:14px"><strong>Mail-Erinnerung:</strong> ${notificationRecipient(c)?`Empfänger ${escapeHtml(notificationRecipient(c))}. <button class="secondary-btn outlook-draft" data-id="${c.id}" style="margin-left:8px">Testmail öffnen</button>`:'Bitte im Vertrag oder beim Verantwortlichen eine E-Mail-Adresse hinterlegen.'}</div>` : ''}`,
       documents:`
-        <div class="notice info">Dokumente werden in Version 1 lokal im Browser gespeichert. Sie sind nicht automatisch auf anderen Geräten verfügbar.</div>
+        <div class="notice info">Dokumente werden in der aktuellen lokalen Version im Browser gespeichert. Sie sind nicht automatisch auf anderen Geräten verfügbar.</div>
         ${docs.length?docs.map(d=>`<div class="file-row"><div class="file-info"><div class="file-name">${escapeHtml(d.name)}</div><div class="file-meta">${escapeHtml(d.docType||'Dokument')} · ${escapeHtml(d.userName||'')} · ${fmtDateTime(d.createdAt)} · ${Math.round((d.size||0)/1024)} KB</div></div><button class="secondary-btn open-doc" data-id="${d.id}">Ansehen</button>${canEdit()?`<button class="danger-btn del-doc" data-id="${d.id}">Löschen</button>`:''}</div>`).join(''):'<div class="empty">Noch keine Dokumente hinterlegt.</div>'}
         ${canEdit()?`<form id="documentForm" style="margin-top:14px"><div class="form-grid"><label><span>Dokumenttyp</span><select name="docType"><option>Vertrag</option><option>Nachtrag</option><option>Kündigungsschreiben</option><option>Kündigungsbestätigung</option><option>Korrespondenz</option><option>Sonstiges</option></select></label><label><span>Datei</span><input type="file" name="file" required></label></div><div class="right" style="margin-top:10px"><button class="primary-btn">Dokument speichern</button></div></form>`:''}`,
       notes:`
@@ -518,6 +563,7 @@
 
     $$('.tab-btn').forEach(b=>b.addEventListener('click',()=>{closeModal();openContractDetail(id,b.dataset.tab);}));
     $('#editContractBtn')?.addEventListener('click',()=>{closeModal();openContractModal(id);});
+    $$('.outlook-draft').forEach(b=>b.addEventListener('click', e=>{ e.stopPropagation(); openOutlookDraft(c); }));
     $('#contractNoteForm')?.addEventListener('submit',async e=>{e.preventDefault();const text=new FormData(e.target).get('text').trim();if(!text)return;const u=currentUser();await storage.put('notes',{id:uid('note'),contractId:id,providerId:c.providerId,text,userId:u.id,userName:u.name,createdAt:new Date().toISOString()});await audit('Notiz hinzugefügt','contract',id,text.slice(0,80));await reload();closeModal();openContractDetail(id,'notes');});
     $('#cancelForm')?.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.target);const u=currentUser();const cancelFile=fd.get('cancelFile');const rec={id:uid('can'),contractId:id,userId:u.id,createdAt:new Date().toISOString()};for(const[k,v]of fd.entries()){if(k==='cancelFile')continue;rec[k]=String(v).trim();}await storage.put('cancellations',rec);if(cancelFile instanceof File && cancelFile.size){const doc={id:uid('doc'),contractId:id,providerId:c.providerId,cancellationId:rec.id,name:cancelFile.name,type:cancelFile.type,size:cancelFile.size,docType:'Kündigungsschreiben',blob:cancelFile,userId:u.id,userName:u.name,createdAt:new Date().toISOString()};await storage.put('documents',doc);await audit('Kündigungsschreiben hinterlegt','contract',id,doc.name);}const updated={...c,status:rec.status==='confirmed'?'cancelled':'planned',updatedAt:new Date().toISOString()};await storage.put('contracts',updated);await audit('Kündigung hinterlegt','contract',id,`${rec.method} · ${rec.cancelledOn}`);await reload();closeModal();openContractDetail(id,'cancellation');toast('Kündigung gespeichert');});
     $('#documentForm')?.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.target);const file=fd.get('file');if(!(file instanceof File)||!file.size)return;const u=currentUser();const rec={id:uid('doc'),contractId:id,providerId:c.providerId,name:file.name,type:file.type,size:file.size,docType:String(fd.get('docType')),blob:file,userId:u.id,userName:u.name,createdAt:new Date().toISOString()};await storage.put('documents',rec);await audit('Dokument hinterlegt','contract',id,`${rec.docType}: ${rec.name}`);await reload();closeModal();openContractDetail(id,'documents');toast('Dokument lokal gespeichert');});
@@ -538,7 +584,7 @@
   }
 
   async function exportJson(){
-    const payload={version:1,exportedAt:new Date().toISOString(),data:{}};
+    const payload={version:2,exportedAt:new Date().toISOString(),data:{}};
     for(const s of STORES.filter(s=>s!=='documents')) payload.data[s]=await storage.getAll(s);
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`vertragsmanager-backup-${todayISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
