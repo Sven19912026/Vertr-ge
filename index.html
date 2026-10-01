@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Vertragsmanager</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="appShell" class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">V</div>
+        <div>
+          <div class="brand-title">Vertragsmanager</div>
+          <div class="brand-subtitle">Version 1 · lokal</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-view="dashboard">Dashboard</button>
+        <button class="nav-item" data-view="providers">Dienstleister</button>
+        <button class="nav-item" data-view="contracts">Verträge</button>
+        <button class="nav-item" data-view="cancellations">Kündigungen</button>
+        <button class="nav-item" data-view="categories">Kategorien</button>
+        <button class="nav-item" data-view="users">Benutzer</button>
+        <button class="nav-item" data-view="settings">Daten & Export</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="storage-note">
+          <strong>Lokale Speicherung</strong>
+          <span>Keine Daten werden an Firebase übertragen.</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn mobile-only" id="menuBtn" aria-label="Menü">☰</button>
+        <div>
+          <h1 id="viewTitle">Dashboard</h1>
+          <p id="viewSubtitle">Verträge, Fristen und Kündigungen im Blick</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="user-switcher">
+            <span class="muted">Aktiver Benutzer</span>
+            <select id="currentUserSelect"></select>
+          </div>
+          <button class="primary-btn" id="quickAddContractBtn">+ Vertrag</button>
+        </div>
+      </header>
+
+      <section class="content" id="content"></section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop hidden" id="modalBackdrop"></div>
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
